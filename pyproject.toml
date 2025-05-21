@@ -1,0 +1,16 @@
+[project]
+name = "finetune"
+version = "0.1.0"
+description = "Fine-tuning for language models with PPO"
+readme = "README.md"
+requires-python = ">=3.11.12"
+dependencies = [
+    "accelerate>=1.1.1",
+    "torch>=2.6.0",
+    "numpy<2",
+    "ray[default]>=2.44.1",
+    "transformers>=4.46.3",
+    "deepspeed==0.15.4", # 0.16.0 bugs out https://github.com/microsoft/DeepSpeed/issues/6793
+    "vllm>=0.8.2",
+    "datasets>=3.1.0"
+]
