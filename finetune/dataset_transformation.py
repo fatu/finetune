@@ -36,7 +36,6 @@ from huggingface_hub.file_download import REGEX_COMMIT_HASH
 
 COLORS = ["on red", "on green", "on blue", "on yellow", "on magenta"]
 
-
 def visualize_token(tokens: list[int], tokenizer: PreTrainedTokenizer):
     i = 0
     console = Console()

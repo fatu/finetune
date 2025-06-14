@@ -5,8 +5,25 @@ python finetune/ppo_only.py \
     --dataset_mixer_eval_list_splits train \
     --max_token_length 512 \
     --max_prompt_token_length 512 \
+    --per_device_train_batch_size 1 \
     --model_name_or_path EleutherAI/pythia-14m \
+    --reward_model_path EleutherAI/pythia-14m \
+    --non_stop_penalty \
+    --stop_token eos \
+    --learning_rate 3e-7 \
+    --total_episodes 32 \
+    --per_device_train_batch_size 1 \
+    --local_rollout_forward_batch_size 1 \
+    --local_mini_batch_size 4 \
+    --local_rollout_batch_size 4 \
+    --apply_verifiable_reward true \
     --seed 3 \
-    --local_mini_batch_size 4
-
-    
+    --reward_model_multiplier 0.0 \
+    --local_mini_batch_size 4 \
+    --actor_num_gpus_per_node 1 \
+    --gradient_checkpointing \
+    --attn_implementation=flash_attention_2 \
+    --single_gpu_mode \
+    --vllm_sync_backend gloo \
+    --vllm_gpu_memory_utilization 0.5 \
+    --vllm_enforce_eager \
