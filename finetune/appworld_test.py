@@ -77,15 +77,16 @@ headers = [
 # print(f"Total tasks processed: {len(task_ids)}")
 
 with AppWorld(
-    task_id="82e2fac_1",
+    task_id="82e2fac_2",
     experiment_name=experiment_name,
 ) as world:
     
     
     code = """
-apis.supervisor.complete_task(status="success", answer=to_return_song["title"])
+apis.supervisor.complete_task(status="fail")
     """
     print("\n\n" + "%" * 20 + " CODE " + "%" * 20 + "\n" + code)
     output = world.execute(code)
     print("\n\n" + "=" * 20 + " OUTPUT " + "=" * 20 + "\n" + output)
     print(world.task_completed())
+    print(world.evaluate().report())

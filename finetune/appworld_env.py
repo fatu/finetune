@@ -15,7 +15,7 @@ class AppWorldEnv:
     def __init__(
         self,
         remote_environment_url: str = "http://0.0.0.0:8081",   
-        ground_truth_mode: Literal["full" "minimal"] = "minimal",
+        ground_truth_mode: Literal["full" "minimal"] = "full",
         worker_id: str = "default",
         max_interactions: int = 20,
     ):
@@ -28,12 +28,13 @@ class AppWorldEnv:
 
     def reset(self, task_id):
         self.current_step_count = 0
-
+        
         self.env = AppWorld(
             task_id=task_id,
-            experiment_name=f'exp_{self.workder_id}',
+            experiment_name="sample",
             remote_environment_url=self.remote_environment_url,
         )
+        AppWorld.init_defaults.experiment_name = f'exp_{self.workder_id}'
 
         obs = self.env.task.instruction
         info = {

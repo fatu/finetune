@@ -3,15 +3,18 @@ from transformers import AutoTokenizer, AutoModelForCausalLM
 import torch
 from vllm import LLM, SamplingParams
 from jinja2 import Template
-from appworld.task import Task
+from appworld.task import Task, load_task_ids
+from appworld.environment import AppWorld
 
 from appworld_env import AppWorldEnv
 from prompts.appworld import APPWORLD_TEMPLATE, APPWORLD_TEMPLATE_NO_HIS
 from eval_utils import format_action_history, extract_code_from_response
 
 # Initialize the Qwen3 model
+# model_name = "model/Qwen/Qwen3-8B"
+# print("Loading Qwen3-8B model...")
 model_name = "model/Qwen/Qwen3-8B"
-print("Loading Qwen3-9B model...")
+print("Loading Qwen3-8B model...")
 tokenizer = AutoTokenizer.from_pretrained(model_name)
 # model = AutoModelForCausalLM.from_pretrained(
 #     model_name,
@@ -38,7 +41,7 @@ sampling_params = SamplingParams(
 # func call model
 def call_qwen_llm(messages: list[dict]) -> str:
     """
-    Call Qwen3-8B model with a history of messages and return the response.
+    Call Qwen3 model with a history of messages and return the response.
     """
     # Apply chat template for Qwen model
     text = tokenizer.apply_chat_template(
@@ -88,8 +91,8 @@ def call_qwen_llm(messages: list[dict]) -> str:
 class QwenReactAgent:
     """A ReAct Agent using Qwen3-4B for AppWorld tasks with thinking tags."""
 
-    def __init__(self, task_info: dict):
-        self.task_info = task_info
+    def __init__(self, task: Task):
+        self.task = task
         self.action_history: list[tuple[str, str]] = []  # (code, output) pairs
         self.step_count = 0
         self.history: list[dict] = self.initialize_conversation()
@@ -98,11 +101,11 @@ class QwenReactAgent:
         """Initialize the conversation with the task prompt."""
         # Create the initial prompt with task information
         prompt_dict = {
-            "supervisor_first_name": self.task_info["supervisor"]["first_name"],
-            "supervisor_last_name": self.task_info["supervisor"]["last_name"],
-            "supervisor_email": self.task_info["supervisor"]["email"],
-            "supervisor_phone_number": self.task_info["supervisor"]["phone_number"],
-            "task_description": self.task_info["instruction"],
+            "supervisor_first_name": self.task.supervisor.first_name,
+            "supervisor_last_name": self.task.supervisor.last_name,
+            "supervisor_email": self.task.supervisor.email,
+            "supervisor_phone_number": self.task.supervisor.phone_number,
+            "task_description": self.task.instruction,
             "step_count": 0,
             "history_length": 0,
             "action_history": "No previous actions.",
@@ -119,11 +122,11 @@ class QwenReactAgent:
         history_length = len(self.action_history)  # Use all history
         
         prompt_dict = {
-            "supervisor_first_name": self.task_info["supervisor"]["first_name"],
-            "supervisor_last_name": self.task_info["supervisor"]["last_name"],
-            "supervisor_email": self.task_info["supervisor"]["email"],
-            "supervisor_phone_number": self.task_info["supervisor"]["phone_number"],
-            "task_description": self.task_info["instruction"],
+            "supervisor_first_name": self.task.supervisor.first_name,
+            "supervisor_last_name": self.task.supervisor.last_name,
+            "supervisor_email": self.task.supervisor.email,
+            "supervisor_phone_number": self.task.supervisor.phone_number,
+            "task_description": self.task.instruction,
             "step_count": self.step_count,
             "history_length": history_length,
             "action_history": format_action_history(self.action_history),  # Use all history
@@ -169,58 +172,88 @@ class QwenReactAgent:
         
 # Test the Qwen agent on a single task using AppWorldEnv
 dataset_name = "train"  # Or dev, test_normal, test_challenge
-experiment_name = "qwen3_4b_react_agent"
-max_interactions = 20
-task_id = "82e2fac_1"
+experiment_name = "qwen3_8b_react_agent"
+max_interactions = 30
+# task_id = "82e2fac_1"
 
-# Initialize the AppWorld environment
-env = AppWorldEnv(
-    remote_environment_url="http://0.0.0.0:8081",  # Optional: use remote environment
-    max_interactions=max_interactions,
-    worker_id="qwen_test"
-)
+task_ids = load_task_ids(dataset_name)
 
-try:
-    # Reset environment with the task
-    obs, info = env.reset(task_id)
-    
-    print("\n\n" + "*" * 20 + f" Task 1/1 ({task_id})  " + "*" * 20)
-    print(f"Instruction: {obs}")
-    print(f"Supervisor: {info['supervisor']['first_name']} {info['supervisor']['last_name']}")
-    print("-" * 60)
-
-    # Create task info for the agent
-    task_info = {
-        "instruction": obs,
-        "supervisor": info["supervisor"]
-    }
-    
-    agent = QwenReactAgent(task_info)
-
+for index, task_id in enumerate(task_ids):
+    # Load the appworld environment for the task
+    with AppWorld(
+        task_id=task_id,
+        experiment_name=experiment_name,
+        remote_environment_url="http://0.0.0.0:8081",
+    ) as world:
+        # Load the agent with the task to solve
+        print("\n\n" + "*" * 20 + f" Task {index+1}/{len(task_ids)} ({task_id})  " + "*" * 20)
+        if index + 1 < 37:
+            continue
+        print(world.task.instruction)
+        agent = QwenReactAgent(world.task)
+        output: str | None = None
         # Until the task is completed or max_interactions is reached
-    for step in range(max_interactions):
-        print(f"\n[Step {step + 1}/{max_interactions}]")
-        
-        # Ask the agent to generate the code block
-        code = agent.next_code_block(obs if step > 0 else None)
-        print("\n" + "%" * 20 + " CODE " + "%" * 20 + "\n" + code)
-        
-        # Execute the code in the environment
-        obs, reward, done, step_info = env.step(code)
-        print("\n" + "=" * 20 + " OUTPUT " + "=" * 20 + "\n" + obs)
-        print(f"Reward: {reward}, Done: {done}, Won: {step_info.get('won', False)}")
-        
-        # Stop if task is completed
-        if done:
-            if step_info.get('won', False):
-                print("\n✅ Task completed successfully!")
-            else:
-                print("\n❌ Task not completed within maximum interactions.")
-            break
-    else:
-        print("\n❌ Task not completed within maximum interactions.")
+        for _ in range(max_interactions):
+            # ask the agent to generate the code block based on the history.
+            code = agent.next_code_block(output)
+            print("\n\n" + "%" * 20 + " CODE " + "%" * 20 + "\n" + code)
+            # execute the code in the world environment
+            output = world.execute(code)
+            print("\n\n" + "=" * 20 + " OUTPUT " + "=" * 20 + "\n" + output)
+            # Stop if task is completed
+            if world.task_completed():
+                print(f"\n✅ Task {task_id} completed successfully!")
+                break
 
-finally:
-    # Clean up
-    pass
-    # env.close()
+
+# # Initialize the AppWorld environment
+# env = AppWorldEnv(
+#     remote_environment_url="http://0.0.0.0:8081",  # Optional: use remote environment
+#     max_interactions=max_interactions,
+#     worker_id="qwen_test"
+# )
+
+# try:
+#     # Reset environment with the task
+#     obs, info = env.reset(task_id)
+    
+#     print("\n\n" + "*" * 20 + f" Task 1/1 ({task_id})  " + "*" * 20)
+#     print(f"Instruction: {obs}")
+#     print(f"Supervisor: {info['supervisor']['first_name']} {info['supervisor']['last_name']}")
+#     print("-" * 60)
+
+#     # Create task info for the agent
+#     task_info = {
+#         "instruction": obs,
+#         "supervisor": info["supervisor"]
+#     }
+    
+#     agent = QwenReactAgent(task_info)
+
+#         # Until the task is completed or max_interactions is reached
+#     for step in range(max_interactions):
+#         print(f"\n[Step {step + 1}/{max_interactions}]")
+        
+#         # Ask the agent to generate the code block
+#         code = agent.next_code_block(obs if step > 0 else None)
+#         print("\n" + "%" * 20 + " CODE " + "%" * 20 + "\n" + code)
+        
+#         # Execute the code in the environment
+#         obs, reward, done, step_info = env.step(code)
+#         print("\n" + "=" * 20 + " OUTPUT " + "=" * 20 + "\n" + obs)
+#         print(f"Reward: {reward}, Done: {done}, Won: {step_info.get('won', False)}")
+        
+#         # Stop if task is completed
+#         if done:
+#             if step_info.get('won', False):
+#                 print("\n✅ Task completed successfully!")
+#             else:
+#                 print("\n❌ Task not completed within maximum interactions.")
+#             break
+#     else:
+#         print("\n❌ Task not completed within maximum interactions.")
+
+# finally:
+#     # Clean up
+#     pass
+#     # env.close()

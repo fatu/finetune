@@ -21,7 +21,7 @@ def extract_code_from_response(response: str) -> str:
     # Last fallback: return the whole response stripped of tags
     cleaned = response.replace('<think>', '').replace('</think>', '')
     cleaned = cleaned.replace('<code>', '').replace('</code>', '').strip()
-    return cleaned
+    return "no code suggest"
 
 def format_action_history(history: list[tuple[str, str]], max_entries: int = 3) -> str:
     """
@@ -35,7 +35,7 @@ def format_action_history(history: list[tuple[str, str]], max_entries: int = 3) 
     for i, (code, output) in enumerate(history, 1):
         formatted.append(f"\nStep {i}:")
         formatted.append(f"Code: {code}")
-        formatted.append(f"Output: {output[:100000]}..." if len(output) > 100000 else f"Output: {output}")
+        formatted.append(f"Output: ...{output[-100000:]}" if len(output) > 100000 else f"Output: {output}")
     
     return "\n".join(formatted)
 

@@ -183,3 +183,6 @@ local_dataset_cache/
 data/
 model/
 runs/
+CLAUDE.md
+output/
+experiments/outputs/

@@ -13,7 +13,7 @@ export HF_ENDPOINT=https://hf-mirror.com
 
 # dataset_name_list="trl-lib/Capybara TIGER-Lab/MathInstruct microsoft/orca-math-word-problems-200k KbsdJames/Omni-MATH meta-math/MetaMathQA AI-MO/NuminaMath-CoT"
 
-dataset_name_list="trl-lib/tldr"
+dataset_name_list="neuralmagic/ultrachat_2k"
 for tempdata in $dataset_name_list; do
     echo "Processing model: $tempmodel"
     huggingface-cli download --resume-download $tempdata --local-dir "data/$tempdata" --repo-type dataset --local-dir-use-symlinks False

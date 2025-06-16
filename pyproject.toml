@@ -19,6 +19,7 @@ dependencies = [
     "tensorboard>=2.18.0",
     "lora>=0.3.0",
     "peft>=0.15.2",
+    "math-verify>=0.7.0",
 ]
 
 [build-system]
