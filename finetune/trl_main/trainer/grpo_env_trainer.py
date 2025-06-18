@@ -45,14 +45,14 @@ from transformers.integrations.deepspeed import is_deepspeed_zero3_enabled
 from transformers.trainer_utils import seed_worker
 from transformers.utils import is_datasets_available, is_peft_available, is_rich_available
 
-from trl_main.data_utils import apply_chat_template, is_conversational, maybe_apply_chat_template
-from trl_main.extras.profiling import profiling_context, profiling_decorator
-from trl_main.extras.vllm_client import VLLMClient
-from trl_main.import_utils import is_vllm_available
-from trl_main.models import create_reference_model, prepare_deepspeed, prepare_fsdp, unwrap_model_for_generation
-from trl_main.models.utils import _ForwardRedirection
-from trl_main.trainers.callbacks import SyncRefModelCallback
-from .grpo_config import GRPOConfig
+from ..data_utils import apply_chat_template, is_conversational, maybe_apply_chat_template
+from ..extras.profiling import profiling_context, profiling_decorator
+from ..extras.vllm_client import VLLMClient
+from ..import_utils import is_liger_kernel_available, is_vllm_available
+from ..models import create_reference_model, prepare_deepspeed, prepare_fsdp, unwrap_model_for_generation
+from ..models.utils import _ForwardRedirection
+from .callbacks import SyncRefModelCallback
+from .grpo_env_config import GRPOEnvConfig
 from .utils import (
     disable_dropout_in_model,
     generate_model_card,
@@ -277,7 +277,7 @@ def nanmax(tensor: torch.Tensor) -> torch.Tensor:
     return torch.max(tensor[~torch.isnan(tensor)])
 
 
-class GRPOTrainer(Trainer):
+class GRPOEnvTrainer(Trainer):
     """
     Trainer for the Group Relative Policy Optimization (GRPO) method. This algorithm was initially proposed in the
     paper [DeepSeekMath: Pushing the Limits of Mathematical Reasoning in Open Language Models](https://huggingface.co/papers/2402.03300).
@@ -286,7 +286,7 @@ class GRPOTrainer(Trainer):
 
     ```python
     from datasets import load_dataset
-    from trl import GRPOTrainer
+    from trl import GRPOEnvTrainer
 
     dataset = load_dataset("trl-lib/tldr", split="train")
 
@@ -294,7 +294,7 @@ class GRPOTrainer(Trainer):
         # Dummy reward function that rewards completions with more unique letters.
         return [float(len(set(completion))) for completion in completions]
 
-    trainer = GRPOTrainer(
+    trainer = GRPOEnvTrainer(
         model="Qwen/Qwen2-0.5B-Instruct",
         reward_funcs=reward_func,
         train_dataset=dataset,
@@ -333,7 +333,7 @@ class GRPOTrainer(Trainer):
                   [Using a custom reward function](#using-a-custom-reward-function).
             - A list of reward functions, where each item can independently be any of the above types. Mixing different
             types within the list (e.g., a string model ID and a custom reward function) is allowed.
-        args ([`GRPOConfig`], *optional*, defaults to `None`):
+        args ([`GRPOEnvConfig`], *optional*, defaults to `None`):
             Configuration for this trainer. If `None`, a default configuration is used.
         train_dataset ([`~datasets.Dataset`] or [`~datasets.IterableDataset`]):
             Dataset to use for training. It must include a column `"prompt"`. Any additional columns in the dataset is
@@ -377,7 +377,7 @@ class GRPOTrainer(Trainer):
         self,
         model: Union[str, PreTrainedModel],
         reward_funcs: Union[RewardFunc, list[RewardFunc]],
-        args: Optional[GRPOConfig] = None,
+        args: Optional[GRPOEnvConfig] = None,
         train_dataset: Optional[Union[Dataset, IterableDataset]] = None,
         eval_dataset: Optional[Union[Dataset, IterableDataset, dict[str, Union[Dataset, IterableDataset]]]] = None,
         processing_class: Optional[PreTrainedTokenizerBase] = None,
@@ -385,12 +385,16 @@ class GRPOTrainer(Trainer):
         callbacks: Optional[list[TrainerCallback]] = None,
         optimizers: tuple[Optional[torch.optim.Optimizer], Optional[torch.optim.lr_scheduler.LambdaLR]] = (None, None),
         peft_config: Optional["PeftConfig"] = None,
+        dataset_metadata: Optional[Any] = None,  # Add this parameter for custom dataset metadata
     ):
+        # Store dataset metadata
+        self.dataset_metadata = dataset_metadata
+        
         # Args
         if args is None:
             model_name = model if isinstance(model, str) else model.config._name_or_path
             model_name = model_name.split("/")[-1]
-            args = GRPOConfig(f"{model_name}-GRPO")
+            args = GRPOEnvConfig(f"{model_name}-GRPO")
 
         # Models
         # Trained model
@@ -405,7 +409,7 @@ class GRPOTrainer(Trainer):
                 model_init_kwargs["torch_dtype"] = torch_dtype
             else:
                 raise ValueError(
-                    "Invalid `torch_dtype` passed to `GRPOConfig`. Expected either 'auto' or a string representing "
+                    "Invalid `torch_dtype` passed to `GRPOEnvConfig`. Expected either 'auto' or a string representing "
                     f"a `torch.dtype` (e.g., 'float32'), but got {torch_dtype}."
                 )
             # Disable caching if gradient checkpointing is enabled (not supported)
@@ -417,7 +421,7 @@ class GRPOTrainer(Trainer):
             model_id = model.config._name_or_path
             if args.model_init_kwargs is not None:
                 raise ValueError(
-                    "You passed `model_init_kwargs` to the `GRPOConfig`, but your model is already instantiated. "
+                    "You passed `model_init_kwargs` to the `GRPOEnvConfig`, but your model is already instantiated. "
                     "This argument can only be used when the `model` argument is a string."
                 )
 
@@ -500,6 +504,7 @@ class GRPOTrainer(Trainer):
         self.vllm_mode = args.vllm_mode
         self.vllm_gpu_memory_utilization = args.vllm_gpu_memory_utilization  # only applies to colocation mode
         self.vllm_tensor_parallel_size = args.vllm_tensor_parallel_size  # only applies to colocation mode
+        self.vllm_generate_mode = args.vllm_generate_mode
         self.use_liger_loss = args.use_liger_loss
         self.loss_type = args.loss_type
         self.scale_rewards = args.scale_rewards
@@ -517,7 +522,7 @@ class GRPOTrainer(Trainer):
         ):
             # See https://github.com/huggingface/trl/issues/3213
             raise NotImplementedError(
-                "Iterable datasets are not yet supported in GRPOTrainer. Please use a standard dataset instead."
+                "Iterable datasets are not yet supported in GRPOEnvTrainer. Please use a standard dataset instead."
             )
 
         # Multi-step
@@ -713,7 +718,7 @@ class GRPOTrainer(Trainer):
     def _set_signature_columns_if_needed(self):
         # If `self.args.remove_unused_columns` is True, non-signature columns are removed.
         # By default, this method sets `self._signature_columns` to the model's expected inputs.
-        # In GRPOTrainer, we preprocess data, so using the model's signature columns doesn't work.
+        # In GRPOEnvTrainer, we preprocess data, so using the model's signature columns doesn't work.
         # Instead, we set them to the columns expected by the `training_step` method, hence the override.
         if self._signature_columns is None:
             self._signature_columns = ["prompt"]
@@ -799,7 +804,7 @@ class GRPOTrainer(Trainer):
             seed=self.args.seed,
         )
 
-    def _enable_gradient_checkpointing(self, model: PreTrainedModel, args: GRPOConfig) -> PreTrainedModel:
+    def _enable_gradient_checkpointing(self, model: PreTrainedModel, args: GRPOEnvConfig) -> PreTrainedModel:
         """Enables gradient checkpointing for the model."""
         # Ensure use_cache is disabled
         model.config.use_cache = False
@@ -988,6 +993,19 @@ class GRPOTrainer(Trainer):
 
         prompts = [x["prompt"] for x in inputs]
         prompts_text = [maybe_apply_chat_template(example, self.processing_class)["prompt"] for example in inputs]
+        
+        # Access environments from dataset_metadata if available
+        environments = []
+        if self.dataset_metadata and hasattr(self.dataset_metadata, 'get_environment'):
+            for item in inputs:
+                task_id = item.get("task_id")
+                if task_id:
+                    env = self.dataset_metadata.get_environment(task_id)
+                    environments.append(env)
+                else:
+                    environments.append(None)
+        else:
+            environments = [None] * len(inputs)
         prompt_inputs = self.processing_class(
             text=prompts_text, return_tensors="pt", padding=True, padding_side="left", add_special_tokens=False
         )
@@ -1064,7 +1082,17 @@ class GRPOTrainer(Trainer):
                     all_prompts_text = prompts_text
 
                 with profiling_context(self, "vLLM.generate"):
-                    all_outputs = self.llm.generate(all_prompts_text, sampling_params=sampling_params, use_tqdm=False)
+                    if self.vllm_generate_mode == "one-by-one":
+                        all_outputs = []
+                        for prompt in all_prompts_text:
+                            output = self.llm.generate(
+                                [prompt],
+                                sampling_params=sampling_params,
+                                use_tqdm=False,
+                            )
+                            all_outputs.extend(output)
+                    else:
+                        all_outputs = self.llm.generate(all_prompts_text, sampling_params=sampling_params, use_tqdm=False)
 
                 completion_ids = [output.token_ids for outputs in all_outputs for output in outputs.outputs]
 
@@ -1151,6 +1179,10 @@ class GRPOTrainer(Trainer):
         # Repeat all input columns (but "prompt", "completion", and "completion_ids") to match the num of generations
         keys = [key for key in inputs[0] if key not in ["prompt", "completion", "completion_ids"]]
         reward_kwargs = {key: [example[key] for example in inputs] for key in keys}
+        
+        # Add environments to reward_kwargs if available
+        if environments and any(env is not None for env in environments):
+            reward_kwargs["env"] = environments
 
         for i, (reward_func, reward_processing_class, reward_func_name) in enumerate(
             zip(self.reward_funcs, self.reward_processing_classes, self.reward_func_names)
@@ -1313,7 +1345,7 @@ class GRPOTrainer(Trainer):
     @profiling_decorator
     def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=None):
         if return_outputs:
-            raise ValueError("The GRPOTrainer does not support returning outputs")
+            raise ValueError("The GRPOEnvTrainer does not support returning outputs")
         if self.use_liger_loss:
             # Compute the loss using the liger grpo loss
             unwrapped_model = self.accelerator.unwrap_model(model)

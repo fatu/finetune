@@ -8,16 +8,16 @@ import json
 import logging
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple, Literal
-from appworld import AppWorld, load_task_ids
+from .appworld_main import AppWorld, load_task_ids
 
 class AppWorldEnv:
 
     def __init__(
         self,
         remote_environment_url: str = "http://0.0.0.0:8081",   
-        ground_truth_mode: Literal["full" "minimal"] = "full",
+        ground_truth_mode: Literal["full", "minimal"] = "full",
         worker_id: str = "default",
-        max_interactions: int = 20,
+        max_interactions: int = 30,
     ):
         self.workder_id = worker_id
         self.max_interactions = max_interactions
@@ -44,21 +44,21 @@ class AppWorldEnv:
         return obs, info
 
 
-    def step(self, action):
+    def step(self, action) -> float:
         """Execute one step in the environment."""
         if self.env is None:
             raise RuntimeError("Environment not reset before step. Please call reset() first.")
 
         self.current_step_count += 1
-
         obs = self.env.execute(action)
+        done = self.env.task_completed() 
+        reward = 0.0
 
-        done = self.env.task_completed() or (self.current_step_count >= self.max_interactions)
-
-        reward = 10.0 if self.env.task_completed() else 0.0
+        if self.env.task_completed():
+            test_tracker = self.env.evaluate(suppress_errors=True)                                                                                                           
+            reward = 1.0 if test_tracker.success else test_tracker.pass_count / test_tracker.total_count
 
         info = {
-            "won": self.env.task_completed(),
             "step_count": self.current_step_count
         }
 
@@ -68,3 +68,35 @@ class AppWorldEnv:
         """Close the environment."""
         if self.env is not None:
             self.env.close()
+
+class AppWorldEnvs:
+    """Wrapper for multiple AppWorld environments."""
+    
+    def __init__(self, dataset_name="train", max_interactions=30):
+        self.dataset_name = dataset_name
+        self.max_interactions = max_interactions
+        self.task_ids = load_task_ids(dataset_name)
+        self.current_index = 0
+
+    def __iter__(self):
+        return self
+
+    def __next__(self) -> Tuple[str, AppWorldEnv]:
+        if self.current_index >= len(self.task_ids):
+            raise StopIteration
+        
+        task_id = self.task_ids[self.current_index]
+        self.current_index += 1
+        env = AppWorldEnv(
+            max_interactions=self.max_interactions,
+        )
+        return task_id, env
+
+
+def build_appworld_envs(dataset_name="train", 
+                        max_interactions=30
+                    ):
+    return AppWorldEnvs(
+        dataset_name=dataset_name,
+        max_interactions=max_interactions,
+    )

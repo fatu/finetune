@@ -6,14 +6,13 @@ from jinja2 import Template
 from appworld.task import Task, load_task_ids
 from appworld.environment import AppWorld
 
-from appworld_env import AppWorldEnv
 from prompts.appworld import APPWORLD_TEMPLATE, APPWORLD_TEMPLATE_NO_HIS
 from eval_utils import format_action_history, extract_code_from_response
 
 # Initialize the Qwen3 model
 # model_name = "model/Qwen/Qwen3-8B"
 # print("Loading Qwen3-8B model...")
-model_name = "model/Qwen/Qwen3-8B"
+model_name = "model/Qwen/Qwen3-0.6B"
 print("Loading Qwen3-8B model...")
 tokenizer = AutoTokenizer.from_pretrained(model_name)
 # model = AutoModelForCausalLM.from_pretrained(
@@ -172,7 +171,7 @@ class QwenReactAgent:
         
 # Test the Qwen agent on a single task using AppWorldEnv
 dataset_name = "train"  # Or dev, test_normal, test_challenge
-experiment_name = "qwen3_8b_react_agent"
+experiment_name = "qwen3_0_6b_react_agent"
 max_interactions = 30
 # task_id = "82e2fac_1"
 
@@ -187,7 +186,7 @@ for index, task_id in enumerate(task_ids):
     ) as world:
         # Load the agent with the task to solve
         print("\n\n" + "*" * 20 + f" Task {index+1}/{len(task_ids)} ({task_id})  " + "*" * 20)
-        if index + 1 < 37:
+        if index + 1 < 70:
             continue
         print(world.task.instruction)
         agent = QwenReactAgent(world.task)

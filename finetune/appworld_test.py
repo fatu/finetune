@@ -1,4 +1,4 @@
-from appworld import AppWorld, load_task_ids
+from finetune.environment.appworld_main import AppWorld, load_task_ids
 import csv
 from datetime import datetime
 import json
@@ -85,8 +85,14 @@ with AppWorld(
     code = """
 apis.supervisor.complete_task(status="fail")
     """
-    print("\n\n" + "%" * 20 + " CODE " + "%" * 20 + "\n" + code)
-    output = world.execute(code)
-    print("\n\n" + "=" * 20 + " OUTPUT " + "=" * 20 + "\n" + output)
+    # print("\n\n" + "%" * 20 + " CODE " + "%" * 20 + "\n" + code)
+    # output = world.execute(code)
+    # print("\n\n" + "=" * 20 + " OUTPUT " + "=" * 20 + "\n" + output)
     print(world.task_completed())
-    print(world.evaluate().report())
+    test_tracker = world.evaluate(suppress_errors=True)
+
+    # Check if task is completed                                                                                                            
+    print(test_tracker.success)                                                                                                            
+    print(test_tracker.total_count)
+    print(test_tracker.num_tests)
+    print(test_tracker.pass_count)
