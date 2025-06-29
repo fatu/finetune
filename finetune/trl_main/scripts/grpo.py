@@ -22,8 +22,8 @@ from typing import Optional
 from datasets import load_dataset
 from transformers import AutoModelForCausalLM, AutoModelForSequenceClassification, AutoTokenizer
 
-from trl_main import GRPOConfig, GRPOTrainer, ModelConfig, ScriptArguments, TrlParser, get_peft_config
-from trl_main.rewards import think_format_reward
+from trl import GRPOConfig, GRPOTrainer, ModelConfig, ScriptArguments, TrlParser, get_peft_config
+from trl.rewards import think_format_reward
 
 
 reward_funcs_registry = {
@@ -41,8 +41,8 @@ class GRPOScriptArguments(ScriptArguments):
             Reward model id of a pretrained model hosted inside a model repo on huggingface.co or local path to a
             directory containing model weights saved using [`~transformers.PreTrainedModel.save_pretrained`].
         reward_funcs (`list[str]` or `None`, *optional*, defaults to `None`):
-            Reward functions to use. It can be either one of  `"think_format_reward"`; or a dotted import path "
-            (e.g., `'my_lib.rewards.custom_reward'`).
+            Reward functions to use. It can be either one of `"think_format_reward"`; or a dotted import path " (e.g.,
+            `'my_lib.rewards.custom_reward'`).
     """
 
     reward_model_name_or_path: Optional[str] = field(

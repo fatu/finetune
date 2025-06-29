@@ -10,13 +10,17 @@ Key Features:
 - Configurable task count and environment interaction limits
 
 Usage:
-    # Basic training
+    # Basic training with LoRA
     python finetune/grpo_appworld.py
     
     # Custom configuration
     python finetune/grpo_appworld.py --model_path model/Qwen/Qwen3-0.6B \
                                      --max_tasks 50 \
                                      --max_interactions 20
+    
+    # Training without LoRA (full fine-tuning)
+    # Note: You would need to modify the script to accept command-line args
+    # or directly edit the use_lora parameter in the main function
 
 Requirements:
     - AppWorld server must be running (default: http://0.0.0.0:8081)
@@ -32,6 +36,7 @@ from typing import List, Dict, Any, Optional
 import torch
 import json
 import logging
+from peft import LoraConfig
 
 
 class AppWorldDataset:
@@ -320,6 +325,11 @@ def train_appworld_model(
     output_dir="output/appworld-grpo",
     max_tasks=100,
     max_interactions=30,
+    use_lora=True,
+    lora_r=16,
+    lora_alpha=32,
+    lora_dropout=0.05,
+    lora_target_modules=["q_proj", "k_proj", "v_proj", "o_proj"],
 ):
     """
     Train a model on AppWorld tasks using GRPO with environment feedback.
@@ -330,6 +340,11 @@ def train_appworld_model(
         output_dir: Where to save the trained model
         max_tasks: Maximum number of tasks to train on
         max_interactions: Maximum interactions per task in environment
+        use_lora: Whether to use LoRA for parameter-efficient fine-tuning
+        lora_r: LoRA rank (dimension of the low-rank matrices)
+        lora_alpha: LoRA scaling parameter
+        lora_dropout: Dropout probability for LoRA layers
+        lora_target_modules: List of module names to apply LoRA to (default: Qwen attention layers)
     """
     
     # Create AppWorld dataset
@@ -379,6 +394,19 @@ def train_appworld_model(
     # Set reward weights in training args
     training_args.reward_weights = [0.7, 0.2, 0.1]  # Prioritize task completion
     
+    # Create LoRA configuration if enabled
+    peft_config = None
+    if use_lora:
+        peft_config = LoraConfig(
+            task_type="CAUSAL_LM",
+            r=lora_r,
+            lora_alpha=lora_alpha,
+            lora_dropout=lora_dropout,
+            target_modules=lora_target_modules,  # Apply LoRA to Qwen attention layers
+            bias="none",
+        )
+        print(f"LoRA enabled with r={lora_r}, alpha={lora_alpha}, dropout={lora_dropout}")
+    
     # Create trainer with AppWorld reward functions
     trainer = GRPOEnvTrainer(
         model=model_path,
@@ -389,6 +417,7 @@ def train_appworld_model(
             syntax_validity_reward,  # Ensure valid Python syntax
             api_usage_reward,  # Encourage API usage
         ],
+        peft_config=peft_config,  # Add LoRA configuration
         dataset_metadata=appworld_dataset,  # Pass the dataset instance to access environments
     )
     
@@ -408,11 +437,16 @@ if __name__ == "__main__":
         level=logging.INFO
     )
     
-    # Train on AppWorld tasks
+    # Train on AppWorld tasks with LoRA
     train_appworld_model(
         dataset_name="train",
         model_path="model/Qwen/Qwen3-0.6B",
-        output_dir="output/qwen-appworld-grpo",
+        output_dir="output/qwen-appworld-grpo-lora",
         max_tasks=100,  # Start with a small number of tasks
-        max_interactions=30
+        max_interactions=30,
+        use_lora=True,  # Enable LoRA for efficient training
+        lora_r=16,  # LoRA rank
+        lora_alpha=32,  # LoRA scaling parameter
+        lora_dropout=0.05,  # LoRA dropout
+        lora_target_modules=["q_proj", "k_proj", "v_proj", "o_proj"],  # Qwen model attention layers
     )

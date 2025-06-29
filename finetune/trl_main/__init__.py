@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-__version__ = "0.18.1"
+__version__ = "0.19.0"
 
 from typing import TYPE_CHECKING
 
@@ -41,6 +41,7 @@ _import_structure = {
         "AutoModelForCausalLMWithValueHead",
         "AutoModelForSeq2SeqLMWithValueHead",
         "PreTrainedModelWrapper",
+        "clone_chat_template",
         "create_reference_model",
         "setup_chat_format",
     ],
@@ -64,9 +65,7 @@ _import_structure = {
         "GKDConfig",
         "GKDTrainer",
         "GRPOConfig",
-        "GRPOEnvConfig",
         "GRPOTrainer",
-        "GRPOEnvTrainer",
         "HfPairwiseJudge",
         "IterativeSFTConfig",
         "IterativeSFTTrainer",
@@ -138,6 +137,7 @@ if TYPE_CHECKING:
         AutoModelForCausalLMWithValueHead,
         AutoModelForSeq2SeqLMWithValueHead,
         PreTrainedModelWrapper,
+        clone_chat_template,
         create_reference_model,
         setup_chat_format,
     )
@@ -162,9 +162,7 @@ if TYPE_CHECKING:
         GKDConfig,
         GKDTrainer,
         GRPOConfig,
-        GRPOEnvConfig,
         GRPOTrainer,
-        GRPOEnvTrainer,
         HfPairwiseJudge,
         IterativeSFTConfig,
         IterativeSFTTrainer,

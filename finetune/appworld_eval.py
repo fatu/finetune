@@ -10,17 +10,9 @@ from prompts.appworld import APPWORLD_TEMPLATE, APPWORLD_TEMPLATE_NO_HIS
 from eval_utils import format_action_history, extract_code_from_response
 
 # Initialize the Qwen3 model
-# model_name = "model/Qwen/Qwen3-8B"
-# print("Loading Qwen3-8B model...")
 model_name = "model/Qwen/Qwen3-0.6B"
-print("Loading Qwen3-8B model...")
+print(f"Loading {model_name}...")
 tokenizer = AutoTokenizer.from_pretrained(model_name)
-# model = AutoModelForCausalLM.from_pretrained(
-#     model_name,
-#     torch_dtype=torch.float16,  # Use float16 for efficiency
-#     device_map="auto",  # Automatically handle device placement
-#     trust_remote_code=True  # Required for some Qwen models
-# )
 
 llm = LLM(
     model=model_name,
