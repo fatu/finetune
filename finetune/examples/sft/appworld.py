@@ -2,7 +2,7 @@
 """
 AppWorld Supervised Fine-tuning (SFT) Training Script
 
-This script fine-tunes Qwen3-0.6B on AppWorld conversational trajectory data
+This script fine-tunes Qwen3-4B on AppWorld conversational trajectory data
 for multi-step reasoning and API interaction tasks.
 """
 
@@ -27,7 +27,7 @@ import transformers
 class ModelArguments:
     """Arguments pertaining to which model/config/tokenizer we are going to fine-tune from."""
     model_name_or_path: str = field(
-        default="model/Qwen/Qwen3-0.6B",
+        default="model/Qwen/Qwen3-4B",
         metadata={"help": "Path to pretrained model or model identifier from huggingface.co/models"}
     )
     tokenizer_name_or_path: Optional[str] = field(
@@ -53,7 +53,7 @@ class DataArguments:
 class TrainingArguments:
     """Training arguments for AppWorld SFT."""
     output_dir: str = field(
-        default="output/qwen3-0.6b-appworld-sft",
+        default="output/qwen3-4b-appworld-sft",
         metadata={"help": "Output directory for model and logs"}
     )
     max_length: int = field(
@@ -287,6 +287,7 @@ def main():
     print("Saving final model...")
     trainer.save_model()
     trainer.save_state()
+    # trainer.push_to_hub(commit_message="Final model checkpoint")
     
     print(f"Training completed! Model saved to: {training_args.output_dir}")
 
