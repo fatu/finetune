@@ -20,6 +20,8 @@ dependencies = [
     "lora>=0.3.0",
     "peft>=0.15.2",
     "math-verify>=0.7.0",
+    "bs4>=0.0.2",
+    "pycryptodome>=3.23.0",
 ]
 
 [build-system]
