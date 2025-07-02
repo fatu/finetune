@@ -3,7 +3,7 @@ name = "finetune"
 version = "0.1.0"
 description = "Fine-tuning for language models with PPO"
 readme = "README.md"
-requires-python = ">=3.11.12"
+requires-python = ">=3.12,<3.13"
 dependencies = [
     "accelerate>=1.1.1",
     "torch>=2.6.0",
