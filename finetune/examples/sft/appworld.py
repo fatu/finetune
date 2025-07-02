@@ -13,14 +13,16 @@ from dataclasses import dataclass, field
 from typing import Dict, List, Any, Optional
 
 import torch
+import torch.distributed as dist
 from transformers import (
     AutoTokenizer,
     AutoModelForCausalLM,
     HfArgumentParser
 )
 from datasets import Dataset
-from finetune.trl_main import SFTTrainer, SFTConfig
+from trl import SFTTrainer, SFTConfig
 import transformers
+from accelerate import Accelerator
 
 
 @dataclass
@@ -44,7 +46,7 @@ class DataArguments:
         metadata={"help": "Path to the AppWorld training dataset"}
     )
     max_seq_length: int = field(
-        default=8192,
+        default=2048,
         metadata={"help": "Maximum sequence length for training"}
     )
 
@@ -57,11 +59,11 @@ class TrainingArguments:
         metadata={"help": "Output directory for model and logs"}
     )
     max_length: int = field(
-        default=8192,
+        default=2048,
         metadata={"help": "Maximum sequence length for training"}
     )
     num_train_epochs: int = field(
-        default=3,
+        default=2,
         metadata={"help": "Number of training epochs"}
     )
     per_device_train_batch_size: int = field(
@@ -97,7 +99,7 @@ class TrainingArguments:
         metadata={"help": "Log every X updates steps"}
     )
     save_steps: int = field(
-        default=50,
+        default=100,
         metadata={"help": "Save checkpoint every X updates steps"}
     )
     chat_template_path: str = field(
@@ -175,8 +177,8 @@ def preprocess_dataset(data: List[Dict[str, Any]]) -> Dataset:
     return dataset
 
 
-def setup_model_and_tokenizer(model_args: ModelArguments) -> tuple:
-    """Setup model and tokenizer for full parameter fine-tuning."""
+def setup_model_and_tokenizer(model_args: ModelArguments, use_distributed: bool = False) -> tuple:
+    """Setup model and tokenizer for training."""
     
     print(f"Loading model from: {model_args.model_name_or_path}")
     
@@ -192,15 +194,23 @@ def setup_model_and_tokenizer(model_args: ModelArguments) -> tuple:
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
     
-    
-    # Load model
-    model = AutoModelForCausalLM.from_pretrained(
-        model_args.model_name_or_path,
-        torch_dtype=torch.bfloat16,
-        device_map="auto",
-        trust_remote_code=True,
-        attn_implementation="flash_attention_2" if torch.cuda.is_available() else None
-    )
+    # For distributed training, don't use device_map="auto"
+    if use_distributed:
+        model = AutoModelForCausalLM.from_pretrained(
+            model_args.model_name_or_path,
+            torch_dtype=torch.bfloat16,
+            trust_remote_code=True,
+            attn_implementation="flash_attention_2" if torch.cuda.is_available() else None
+        )
+    else:
+        # Single GPU training
+        model = AutoModelForCausalLM.from_pretrained(
+            model_args.model_name_or_path,
+            torch_dtype=torch.bfloat16,
+            device_map="auto",
+            trust_remote_code=True,
+            attn_implementation="flash_attention_2" if torch.cuda.is_available() else None
+        )
     
     print(f"Model loaded: {model.__class__.__name__}")
     print(f"Total parameters: {sum(p.numel() for p in model.parameters()):,}")
@@ -214,16 +224,24 @@ def main():
     parser = HfArgumentParser((ModelArguments, DataArguments, TrainingArguments))
     model_args, data_args, training_args = parser.parse_args_into_dataclasses()
     
+    # Check if we're in distributed mode
+    use_distributed = int(os.environ.get("WORLD_SIZE", 1)) > 1
+    
     # Set up logging
     transformers.utils.logging.set_verbosity_info()
     
-    print("=" * 50)
-    print("AppWorld Supervised Fine-tuning")
-    print("=" * 50)
-    print(f"Model: {model_args.model_name_or_path}")
-    print(f"Data: {data_args.data_path}")
-    print(f"Output: {training_args.output_dir}")
-    print("=" * 50)
+    # Only print on main process
+    if not use_distributed or (use_distributed and int(os.environ.get("RANK", 0)) == 0):
+        print("=" * 50)
+        print("AppWorld Supervised Fine-tuning")
+        print("=" * 50)
+        print(f"Model: {model_args.model_name_or_path}")
+        print(f"Data: {data_args.data_path}")
+        print(f"Output: {training_args.output_dir}")
+        print(f"Distributed Training: {use_distributed}")
+        if use_distributed:
+            print(f"World Size: {os.environ.get('WORLD_SIZE')}")
+        print("=" * 50)
     
     # Create output directory
     os.makedirs(training_args.output_dir, exist_ok=True)
@@ -232,14 +250,28 @@ def main():
     raw_data = load_appworld_dataset(data_args.data_path)
     
     # Setup model and tokenizer
-    model, tokenizer = setup_model_and_tokenizer(model_args)
+    model, tokenizer = setup_model_and_tokenizer(model_args, use_distributed=use_distributed)
     
     # Preprocess dataset
     dataset = preprocess_dataset(raw_data)
     
-    # Use full dataset for training
-    train_dataset = dataset
-    print(f"Train samples: {len(train_dataset)}")
+    # Filter out samples longer than 16000 tokens
+    filtered_dataset = []
+    filtered_count = 0
+    for sample in dataset:
+        text = "".join([m['content'] for m in sample['messages']])
+        token_length = len(tokenizer.encode(text, truncation=False))
+        if token_length <= 16000:
+            filtered_dataset.append(sample)
+        else:
+            filtered_count += 1
+    
+    if filtered_count > 0:
+        print(f"\nFiltered out {filtered_count} samples exceeding 16000 tokens")
+    
+    # Use filtered dataset for training
+    train_dataset = Dataset.from_list(filtered_dataset)
+    print(f"Train samples: {len(train_dataset)} (after filtering)")
     
     # Create SFT configuration
     sft_config = SFTConfig(
@@ -259,13 +291,18 @@ def main():
         chat_template_path=training_args.chat_template_path,
         report_to=None,  # Disable wandb/tensorboard for now
         remove_unused_columns=False,
+        # Distributed training settings
+        ddp_find_unused_parameters=False if use_distributed else None,
+        ddp_bucket_cap_mb=25 if use_distributed else None,
+        dataloader_pin_memory=True,
+        dataloader_num_workers=4,
     )
     
     # Initialize SFT trainer
     trainer = SFTTrainer(
         model=model,
         args=sft_config,
-        train_dataset=train_dataset
+        train_dataset=train_dataset,
     )
     
     # Save training arguments
