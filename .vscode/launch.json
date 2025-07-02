@@ -1,0 +1,72 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "AppWorld SFT Training - FSDP 4B (Accelerate)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "accelerate.commands.launch",
+            "cwd": "${workspaceFolder}",
+            "args": [
+                "--config_file", "accelerate_config_fsdp.yaml",
+                "finetune/examples/sft/appworld.py",
+                "--model_name_or_path", "model/Qwen/Qwen3-4B",
+                "--data_path", "appworld_training_dataset.json",
+                "--output_dir", "output/qwen3-4b-appworld-sft-fsdp",
+                "--max_length", "2048",
+                "--num_train_epochs", "2",
+                "--per_device_train_batch_size", "2",
+                "--gradient_accumulation_steps", "2",
+                "--learning_rate", "2e-5",
+                "--weight_decay", "0.01",
+                "--gradient_checkpointing", "true",
+                "--bf16", "true",
+                "--assistant_only_loss", "true",
+                "--logging_steps", "10",
+                "--save_steps", "100",
+                "--chat_template_path", "chat_template/qwen_chat_template.jinja"
+            ],
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}",
+                "CUDA_VISIBLE_DEVICES": "0,1",
+                "TRANSFORMERS_VERBOSITY": "info",
+                "NCCL_P2P_DISABLE": "1",
+                "NCCL_IB_DISABLE": "1"
+            },
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+        {
+            "name": "AppWorld SFT Training - Single GPU 4B",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "finetune.examples.sft.appworld",
+            "cwd": "${workspaceFolder}",
+            "args": [
+                "--model_name_or_path", "model/Qwen/Qwen3-4B",
+                "--data_path", "appworld_training_dataset.json",
+                "--output_dir", "output/qwen3-4b-appworld-sft-single-gpu",
+                "--max_length", "2048",
+                "--num_train_epochs", "2",
+                "--per_device_train_batch_size", "2",
+                "--gradient_accumulation_steps", "4",
+                "--learning_rate", "2e-5",
+                "--weight_decay", "0.01",
+                "--gradient_checkpointing", "true",
+                "--bf16", "true",
+                "--assistant_only_loss", "true",
+                "--logging_steps", "10",
+                "--save_steps", "100",
+                "--chat_template_path", "chat_template/qwen_chat_template.jinja"
+            ],
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}",
+                "CUDA_VISIBLE_DEVICES": "0",
+                "TRANSFORMERS_VERBOSITY": "info",
+                "TOKENIZERS_PARALLELISM": "false"
+            },
+            "console": "integratedTerminal",
+            "justMyCode": false
+        }
+    ]
+}
