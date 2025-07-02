@@ -19,7 +19,7 @@ from transformers import (
     HfArgumentParser
 )
 from datasets import Dataset
-from trl_main import SFTTrainer, SFTConfig
+from finetune.trl_main import SFTTrainer, SFTConfig
 import transformers
 
 
@@ -44,12 +44,8 @@ class DataArguments:
         metadata={"help": "Path to the AppWorld training dataset"}
     )
     max_seq_length: int = field(
-        default=4096,
+        default=8192,
         metadata={"help": "Maximum sequence length for training"}
-    )
-    validation_split: float = field(
-        default=0.1,
-        metadata={"help": "Fraction of data to use for validation"}
     )
 
 
@@ -61,7 +57,7 @@ class TrainingArguments:
         metadata={"help": "Output directory for model and logs"}
     )
     max_length: int = field(
-        default=4096,
+        default=8192,
         metadata={"help": "Maximum sequence length for training"}
     )
     num_train_epochs: int = field(
@@ -73,7 +69,7 @@ class TrainingArguments:
         metadata={"help": "Batch size per device during training"}
     )
     gradient_accumulation_steps: int = field(
-        default=4,
+        default=2,
         metadata={"help": "Number of updates steps to accumulate before performing a backward/update pass"}
     )
     learning_rate: float = field(
@@ -101,12 +97,12 @@ class TrainingArguments:
         metadata={"help": "Log every X updates steps"}
     )
     save_steps: int = field(
-        default=500,
+        default=50,
         metadata={"help": "Save checkpoint every X updates steps"}
     )
-    eval_steps: int = field(
-        default=500,
-        metadata={"help": "Run evaluation every X steps"}
+    chat_template_path: str = field(
+        default="chat_template/qwen_chat_template.jinja",
+        metadata={"help": "Path to the chat template file"}
     )
 
 
@@ -119,7 +115,7 @@ def load_appworld_dataset(data_path: str) -> List[Dict[str, Any]]:
     
     print(f"Loaded {len(data)} training samples")
     
-    # Calculate statistics
+    # Calculate statistics based on conversations field (will be converted to messages later)
     total_conversations = sum(len(sample['conversations']) for sample in data)
     avg_conversations = total_conversations / len(data) if data else 0
     
@@ -132,29 +128,30 @@ def load_appworld_dataset(data_path: str) -> List[Dict[str, Any]]:
 def format_appworld_sample(sample: Dict[str, Any]) -> Dict[str, Any]:
     """
     Format AppWorld sample for SFTTrainer.
-    Returns a dict with 'messages' key containing the conversation.
+    Converts 'conversations' field to 'messages' field.
     """
     conversations = sample['conversations']
     
-    formatted_messages = []
+    # Convert conversations to messages format
+    messages = []
     for conv in conversations:
         role = conv['role']
         content = conv['content']
         
         # Map roles to chat template format
         if role == 'system':
-            formatted_messages.append({"role": "system", "content": content})
+            messages.append({"role": "system", "content": content})
         elif role == 'user':
-            formatted_messages.append({"role": "user", "content": content})
+            messages.append({"role": "user", "content": content})
         elif role == 'assistant':
-            formatted_messages.append({"role": "assistant", "content": content})
+            messages.append({"role": "assistant", "content": content})
         else:
             # Default to user role for unknown roles
-            formatted_messages.append({"role": "user", "content": content})
+            messages.append({"role": "user", "content": content})
     
     return {
-        "messages": formatted_messages,
-        "task_id": sample['task_id']
+        "messages": messages,
+        "task_id": sample.get('task_id', 'unknown')
     }
 
 
@@ -194,6 +191,7 @@ def setup_model_and_tokenizer(model_args: ModelArguments) -> tuple:
     # Add special tokens if needed
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
+    
     
     # Load model
     model = AutoModelForCausalLM.from_pretrained(
@@ -239,17 +237,9 @@ def main():
     # Preprocess dataset
     dataset = preprocess_dataset(raw_data)
     
-    # Split dataset
-    if data_args.validation_split > 0:
-        split_dataset = dataset.train_test_split(test_size=data_args.validation_split, seed=42)
-        train_dataset = split_dataset['train']
-        eval_dataset = split_dataset['test']
-        print(f"Train samples: {len(train_dataset)}")
-        print(f"Eval samples: {len(eval_dataset)}")
-    else:
-        train_dataset = dataset
-        eval_dataset = None
-        print(f"Train samples: {len(train_dataset)}")
+    # Use full dataset for training
+    train_dataset = dataset
+    print(f"Train samples: {len(train_dataset)}")
     
     # Create SFT configuration
     sft_config = SFTConfig(
@@ -265,12 +255,8 @@ def main():
         assistant_only_loss=training_args.assistant_only_loss,
         logging_steps=training_args.logging_steps,
         save_steps=training_args.save_steps,
-        eval_steps=training_args.eval_steps if eval_dataset else None,
-        evaluation_strategy="steps" if eval_dataset else "no",
-        save_strategy="steps",
-        load_best_model_at_end=eval_dataset is not None,
-        metric_for_best_model="eval_loss" if eval_dataset else None,
-        greater_is_better=False,
+        save_strategy="epoch",
+        chat_template_path=training_args.chat_template_path,
         report_to=None,  # Disable wandb/tensorboard for now
         remove_unused_columns=False,
     )
@@ -280,8 +266,6 @@ def main():
         model=model,
         args=sft_config,
         train_dataset=train_dataset,
-        eval_dataset=eval_dataset,
-        tokenizer=tokenizer,
     )
     
     # Save training arguments
