@@ -265,7 +265,7 @@ def main():
     trainer = SFTTrainer(
         model=model,
         args=sft_config,
-        train_dataset=train_dataset,
+        train_dataset=train_dataset
     )
     
     # Save training arguments

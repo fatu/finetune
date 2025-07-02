@@ -31,9 +31,9 @@ bash scripts/train/ppo_only.sh
 
 # Run GRPO training for math tasks
 python finetune/grpo_math_trainer.py \
-    --model_name_or_path model/Qwen/Qwen3-0.6B \
+    --model_name_or_path model/Qwen/Qwen3-4B \
     --dataset_name ai2-adapt-dev/gsm8k-train-round2 \
-    --output_dir output/Qwen3-0.6B-GRPO-test \
+    --output_dir output/Qwen3-4B-GRPO-test \
     --num_train_epochs 1 \
     --logging_first_step true \
     --per_device_train_batch_size 2 \
