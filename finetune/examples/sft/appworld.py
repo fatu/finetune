@@ -284,7 +284,7 @@ def main():
         learning_rate=training_args.learning_rate,
         num_train_epochs=training_args.num_train_epochs,
         weight_decay=training_args.weight_decay,
-        assistant_only_loss=training_args.assistant_only_loss,
+        assistant_only_loss=False,
         logging_steps=training_args.logging_steps,
         save_steps=training_args.save_steps,
         save_strategy="epoch",
