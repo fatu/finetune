@@ -185,3 +185,4 @@ runs/
 CLAUDE.md
 output/
 experiments/outputs/
+.DS_Store

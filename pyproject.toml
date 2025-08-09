@@ -9,7 +9,7 @@ dependencies = [
     "torch>=2.6.0",
     "numpy<2",
     "ray[default]>=2.44.1",
-    "transformers>=4.46.3",
+    "transformers>=4.55.0",
     "deepspeed==0.15.4", # 0.16.0 bugs out https://github.com/microsoft/DeepSpeed/issues/6793
     "vllm>=0.8.5",
     "datasets>=3.1.0",
@@ -18,12 +18,13 @@ dependencies = [
     "wheel>=0.45.1",
     "tensorboard>=2.18.0",
     "lora>=0.3.0",
-    "peft>=0.15.2",
+    "peft>=0.17.0",
     "math-verify>=0.7.0",
     "bs4>=0.0.2",
     "pycryptodome>=3.23.0",
     "huggingface-hub>=0.32.4",
-    "trl>=0.19.0",
+    "trl>=0.20.0",
+    "trackio>=0.2.2",
 ]
 
 [build-system]
@@ -35,7 +36,7 @@ py-modules = ["finetune"]
 
 # flash-attn related setups
 [project.optional-dependencies]
-compile = ["flash-attn>=2.7.2.post1"]
+compile = ["flash-attn>=2.8.2"]
 liger = ["liger-kernel>=0.5.4"]
 
 [tool.uv]
@@ -44,5 +45,5 @@ no-build-isolation-package = ["flash-attn"]
 
 [[tool.uv.dependency-metadata]]
 name = "flash-attn"
-version = "2.7.2.post1"
+version = "2.8.2"
 requires-dist = ["torch", "setuptools"]
