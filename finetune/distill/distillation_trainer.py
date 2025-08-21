@@ -82,7 +82,6 @@ class DistillationTrainer:
             self.accelerator = Accelerator(
                 gradient_accumulation_steps=config.gradient_accumulation_steps,
                 mixed_precision="bf16" if config.torch_dtype == "bfloat16" else "fp16",
-                log_with="tensorboard",
                 project_dir=config.output_dir,
             )
         else:
@@ -147,6 +146,8 @@ class DistillationTrainer:
         # Move teacher model to GPU if not using CPU offloading
         if not self.config.teacher_cpu_offload:
             self.teacher_model = self.teacher_model.to(self.accelerator.device)
+            if torch.cuda.is_available():
+                logger.info(f"GPU memory after loading teacher: {torch.cuda.memory_allocated() / 1024**3:.2f} GB")
             
         # Teacher model in eval mode (no gradients needed)
         self.teacher_model.eval()
@@ -167,6 +168,8 @@ class DistillationTrainer:
             
         # Move student model to GPU
         self.student_model = self.student_model.to(self.accelerator.device)
+        if torch.cuda.is_available():
+            logger.info(f"GPU memory after loading student: {torch.cuda.memory_allocated() / 1024**3:.2f} GB")
         
         # Student model in train mode
         self.student_model.train()
